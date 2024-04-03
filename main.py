@@ -69,29 +69,47 @@ def Init():
                     indexList[encodeIndex(index, i)] = 1
                 else:
                     indexList[encodeIndex(i, index)] = 1
-        A_eq.append(indexList.copy())
+        A_eq.append(indexList)
 
-
+def addConstrait(nodes: list[int]) -> None:
+    indexList = [0] * (numCities * numCities)
+    for i in range(len(nodes) - 1):
+        for j in range(i + 1, len(nodes)):
+            node1 = max(nodes[i], nodes[j])
+            node2 = min(nodes[j], nodes[i])
+            indexList[encodeIndex(node1, node2)] = 1
+    A_eq.append(indexList)
+    b_eq.append(2)
 def main():
     Init()
-    result = linprog(costMatrix, A_eq=A_eq, b_eq=b_eq, bounds=(0, 1), integrality=[1] * (numCities * numCities))
-    x = result.x
-    printArrayAsMatrix(x)
-    cost = totalCost(x)
-    print(f'Ukupna distanca: {cost}')
-    printArrayAsMatrix(costMatrix)
-    # print(countEdges(x))
+    end = False
+    while not end:
+        result = linprog(costMatrix, A_eq=A_eq, b_eq=b_eq, bounds=(0, 1), integrality=[1] * (numCities * numCities))
+        x = result.x
+        cost = totalCost(x)
+        print(f'Ukupna distanca: {cost}')
+        for index, xValue in enumerate(x):
+            if xValue > 0:
+                city1, city2 = decodeIndex(index)
+                plt.plot([coordinates[city1][0], coordinates[city2][0]],
+                         [coordinates[city1][1], coordinates[city2][1]], 'ro-')
 
-    for index, xValue in enumerate(x):
-        if xValue > 0:
-            city1, city2 = decodeIndex(index)
-            plt.plot([coordinates[city1][0], coordinates[city2][0]],
-                     [coordinates[city1][1], coordinates[city2][1]], 'ro-')
+        for index in range(numCities):
+            plt.annotate(str(index + 1), (coordinates[index][0], coordinates[index][1]))
 
-    for index in range(numCities):
-        plt.annotate(str(index), (coordinates[index][0], coordinates[index][1]))
+        plt.show()
+        print('Opcije')
+        print('1. Uklanjanje ciklusa cvorova x1, x2, ..., xn')
+        print('2. Kraj rada')
+        print('Vas izbor:', end=' ')
+        option = int(input())
 
-    plt.show()
+        if option == 1:
+            print('Unesite indekse cvorova za koje zelite da uklonite razdvojene razmacima:', end=' ')
+            nodesToAddConstrait = [int(node) - 1 for node in input().split()]
+            addConstrait(nodesToAddConstrait)
+        else:
+            end = True
 
 if __name__ == '__main__':
     main()
