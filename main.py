@@ -15,6 +15,8 @@ costMatrix = []
 
 A_eq = []
 b_eq = [2] * numCities
+A_ub = []
+b_ub = []
 
 def decodeIndex(index: int) -> tuple[int, int]:
     return index // numCities, index % numCities
@@ -73,18 +75,27 @@ def Init():
 
 def addConstrait(nodes: list[int]) -> None:
     indexList = [0] * (numCities * numCities)
-    for i in range(len(nodes) - 1):
-        for j in range(i + 1, len(nodes)):
-            node1 = max(nodes[i], nodes[j])
-            node2 = min(nodes[j], nodes[i])
-            indexList[encodeIndex(node1, node2)] = 1
-    A_eq.append(indexList)
-    b_eq.append(2)
+    cycleNodes = set(nodes)
+    otherNodes = set()
+    for node in range(numCities):
+        if node not in cycleNodes:
+            otherNodes.add(node)
+    for cycleNode in cycleNodes:
+        for otherNode in otherNodes:
+            node1 = max(cycleNode, otherNode)
+            node2 = min(cycleNode, otherNode)
+            indexList[encodeIndex(node1, node2)] = -1
+    A_ub.append(indexList)
+    b_ub.append(-2)
 def main():
     Init()
     end = False
     while not end:
-        result = linprog(costMatrix, A_eq=A_eq, b_eq=b_eq, bounds=(0, 1), integrality=[1] * (numCities * numCities))
+        result = None
+        if len(b_ub) > 0:
+            result = linprog(costMatrix, A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, bounds=(0, 1), integrality=[1] * (numCities * numCities))
+        else:
+            result = linprog(costMatrix, A_eq=A_eq, b_eq=b_eq, bounds=(0, 1), integrality=[1] * (numCities * numCities))
         x = result.x
         cost = totalCost(x)
         print(f'Ukupna distanca: {cost}')
