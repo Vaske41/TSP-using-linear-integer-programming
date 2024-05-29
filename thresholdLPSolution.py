@@ -3,17 +3,18 @@ from scipy.optimize import linprog
 import matplotlib.pyplot as plt
 
 inputFileName = 'input/_in263.txt'
-outputFileName = 'output/_out263.txt'
+outputFileName = 'output/_outThreshold263.txt'
 
 EPS = 1e-11
-numCities = 12
+numCities = 0
+threshold = 0.65
 
 coordinates = []
 
 costMatrix = []
 
 A_eq = []
-b_eq = [2] * numCities
+b_eq = []
 A_ub = []
 b_ub = []
 cycles = []
@@ -22,21 +23,14 @@ x = []
 def dfsCycle(u, p, color: list, par: list):
     global x
 
-    # already (completely) visited vertex.
     if color[u] == 2:
         return
 
-    # seen vertex, but was not
-    # completely visited -> cycle detected.
-    # backtrack based on parents to
-    # find the complete cycle.
     if color[u] == 1:
         v = []
         cur = p
         v.append(cur)
 
-        # backtrack the vertex which are
-        # in the current cycle thats found
         while cur != u:
             cur = par[cur]
             v.append(cur)
@@ -46,19 +40,15 @@ def dfsCycle(u, p, color: list, par: list):
 
     par[u] = p
 
-    # partially visited.
     color[u] = 1
 
-    # simple dfs on graph
     for city in range(numCities):
-        # if it has not been visited previously
         if city == par[u] or city == u:
             continue
         val = x[encodeIndex(city, u)]
-        if round(val) > 0:
+        if val >= threshold:
             dfsCycle(city, u, color, par)
 
-    # completely visited.
     color[u] = 2
 
 def decodeIndex(index: int) -> tuple[int, int]:
@@ -77,7 +67,7 @@ def countEdges(x: list[int]) -> list[int]:
     edges = [0] * numCities
     for i in range(numCities):
         for j in range(i + 1):
-            if round(x[encodeIndex(i, j)]) > 0:
+            if x[encodeIndex(i, j)] >= threshold:
                 edges[i] += 1
                 edges[j] += 1
 
@@ -98,7 +88,8 @@ def printArrayAsMatrix():
 def totalCost(x: list[int]) -> float:
     cost = 0.0
     for index, value in enumerate(x):
-        cost += round(value) * costMatrix[index]
+        if value >= threshold:
+            cost += costMatrix[index]
 
     return cost
 
@@ -143,6 +134,12 @@ def addConstrait(nodes: list[int]) -> None:
     A_ub.append(indexList)
     b_ub.append(-2)
 
+def addBranch(node1: int, node2: int) -> None:
+    indexList = [0] * (numCities * (numCities + 1) // 2)
+    indexList[encodeIndex(node1, node2)] = 1
+    A_eq.append(indexList)
+    b_eq.append(1)
+
 def resolveTwoCycles(cycles: list[list[int]]):
     firstCycle = cycles[0]
     secondCycle = cycles[1]
@@ -154,13 +151,13 @@ def resolveTwoCycles(cycles: list[list[int]]):
         firstNode1 = firstCycle[i]
         for j in range(i + 1, len(firstCycle)):
             secondNode1 = firstCycle[j]
-            if round(x[encodeIndex(firstNode1, secondNode1)]) == 0:
+            if x[encodeIndex(firstNode1, secondNode1)] >= threshold:
                 continue
             for k in range(len(secondCycle)):
                 firstNode2 = secondCycle[k]
                 for l in range(k + 1, len(secondCycle)):
                     secondNode2 = secondCycle[l]
-                    if round(x[encodeIndex(firstNode2, secondNode2)]) == 0:
+                    if x[encodeIndex(firstNode2, secondNode2)] < threshold:
                         continue
                     currentDistance = distance(firstNode1, secondNode1) + distance(firstNode2, secondNode2)
                     distance1 = distance(firstNode1, firstNode2)
@@ -189,9 +186,15 @@ def resolveTwoCycles(cycles: list[list[int]]):
 def visualise(x):
     for i in range(numCities):
         for j in range(numCities):
-            if round(x[encodeIndex(i, j)]) > 0:
+            if x[encodeIndex(i, j)] >= threshold:
                 plt.plot([coordinates[i][0], coordinates[j][0]],
                          [coordinates[i][1], coordinates[j][1]], 'ro-')
+
+    # for index, xValue in enumerate(x):
+    #     if xValue >= threshold:
+    #         city1, city2 = decodeIndex(index)
+    #         plt.plot([coordinates[city1][0], coordinates[city2][0]],
+    #                  [coordinates[city1][1], coordinates[city2][1]], 'ro-')
 
     for index in range(numCities):
         plt.annotate(str(index), (coordinates[index][0], coordinates[index][1]))
@@ -204,8 +207,25 @@ def outputResults():
         outputFile.write(f'Grane:\n')
         for i in range(numCities):
             for j in range(0, i):
-                if round(x[encodeIndex(i, j)]) > 0:
+                if x[encodeIndex(i, j)] >= threshold:
                     outputFile.write(f'{i} - {j}\n')
+
+def setMaximumEdgeToOne(index: int, x) -> None:
+    values = []
+    for j in range(numCities):
+        if j != index:
+            values.append((x[encodeIndex(index, j)], j))
+
+    values.sort()
+    if values[-1][0] == 1:
+        addBranch(index, values[-2][1])
+    else:
+        addBranch(index, values[-1][1])
+
+def addConstraintsEdgesCnt(edgesCnt: list[int], x) -> None:
+    for index, value in enumerate(edgesCnt):
+        if value != 2:
+            setMaximumEdgeToOne(index, x)
 
 def main():
     global x
@@ -214,11 +234,21 @@ def main():
     end = False
     while not end:
         if len(b_ub) > 0:
-            result = linprog(costMatrix, A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, bounds=(1, 1), integrality=3)
+            result = linprog(costMatrix, A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, bounds=(0, 1))
         else:
-            result = linprog(costMatrix, A_eq=A_eq, b_eq=b_eq, bounds=(1, 1), integrality=3)
+            result = linprog(costMatrix, A_eq=A_eq, b_eq=b_eq, bounds=(0, 1))
         x = result.x
-        cost = totalCost(x)
+
+        if not result.success:
+            print('Neuspesno nadjeno resenje!')
+            break
+
+        edgesCnt = countEdges(x)
+        print(f'EdgesCnt: {edgesCnt}')
+
+        if edgesCnt.count(2) != len(edgesCnt):
+            addConstraintsEdgesCnt(edgesCnt, x)
+            continue
 
         cycles.clear()
         color = [0] * numCities
@@ -241,20 +271,6 @@ def main():
             outputResults()
             visualise(x)
             end = True
-
-        lastResult = cost
-        # print('Opcije')
-        # print('1. Uklanjanje ciklusa cvorova x1, x2, ..., xn')
-        # print('2. Kraj rada')
-        # print('Vas izbor:', end=' ')
-        # option = int(input())
-        #
-        # if option == 1:
-        #     print('Unesite indekse cvorova za koje zelite da uklonite razdvojene razmacima:', end=' ')
-        #     nodesToAddConstrait = [int(node) - 1 for node in input().split()]
-        #     addConstrait(nodesToAddConstrait)
-        # else:
-        #     end = True
 
 if __name__ == '__main__':
     main()
